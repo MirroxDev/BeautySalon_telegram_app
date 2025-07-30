@@ -1,7 +1,7 @@
 import type { ComponentType, JSX } from 'react';
 
 import { IndexPage } from '@/pages/IndexPage/IndexPage';
-import { TestPage } from '@/pages/Test/Test';
+import BookingCalendar from '@/pages/Test/BookingCalendar';
 
 interface Route {
   path: string;
@@ -12,5 +12,5 @@ interface Route {
 
 export const routes: Route[] = [
   { path: '/', Component: IndexPage },
-  { path: '/test', Component: TestPage, title: 'Init Data' },
+  { path: '/test', Component: BookingCalendar, title: 'Init Data' },
 ];

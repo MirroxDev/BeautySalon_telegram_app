@@ -1,5 +1,6 @@
 {
   "name": "reactjs-template",
+  "homepage": "https://MirroxDev.github.io/BeautySalon_telegram_app",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -15,13 +16,16 @@
     "predeploy": "npm run build"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.1.11",
     "@telegram-apps/sdk-react": "^3.3.1",
     "@telegram-apps/telegram-ui": "^2.1.8",
     "@tonconnect/ui-react": "^2.1.0",
     "eruda": "^3.4.1",
+    "lucide-react": "^0.534.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.0"
+    "react-router-dom": "^6.23.0",
+    "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.23.0",

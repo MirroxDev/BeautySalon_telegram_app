@@ -1,5 +1,1 @@
-@import "./normalize.css";
-
-body {
-  background: var(--tg-theme-secondary-bg-color, white);
-}
+@import "tailwindcss";
