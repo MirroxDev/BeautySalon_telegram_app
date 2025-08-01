@@ -1,18 +1,17 @@
-import { Section, Cell, List } from "@telegram-apps/telegram-ui";
 import type { FC } from "react";
 
-import { Link } from "@/components/Link/Link.tsx";
 import { Page } from "@/components/Page.tsx";
+import BookingCalendar from "../../components/BookingCalendar";
 // import BookingCalendar from "../Test/BookingCalendar";
 
 export const IndexPage: FC = () => {
   return (
     <Page back={false}>
-      <List>
+        <BookingCalendar />
+      {/* <List>
         <Section
           header="Features"
           footer="You can use these pages to learn more about features, provided by Telegram Mini Apps and other useful projects">
-          {/* <BookingCalendar /> */}
         </Section>
         <Section
           header="Application Launch Data"
@@ -23,7 +22,7 @@ export const IndexPage: FC = () => {
             </Cell>
           </Link>
         </Section>
-      </List>
+      </List> */}
     </Page>
   );
 };
