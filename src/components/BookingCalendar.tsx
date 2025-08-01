@@ -193,11 +193,13 @@ const BookingCalendar: React.FC = () => {
     }
   };
 
+
   return (
     <div className="max-w-4xl mx-auto p-4 min-h-screen text-gray-500">
       {/* Заголовок */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-2">Запись к мастеру</h1>
+        
         <div className="flex items-center text-gray-600">
           <User className="w-4 h-4 mr-2" />
           <span>{mockMaster.name}</span>
