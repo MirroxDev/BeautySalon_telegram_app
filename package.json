@@ -1,11 +1,9 @@
 {
   "name": "beauty-salon-telegram-app",
-  "homepage": "https://MirroxDev.github.io/BeautySalon_telegram_app",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "deploy": "gh-pages -d dist",
     "dev": "vite",
     "dev:https": "cross-env HTTPS=true vite",
     "build": "tsc --noEmit && vite build",
@@ -39,7 +37,6 @@
     "eslint": "^9.23.0",
     "eslint-plugin-react": "^7.37.4",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "gh-pages": "^6.1.1",
     "globals": "^15.2.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.28.0",
