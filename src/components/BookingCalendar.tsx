@@ -1,86 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Clock, User, Calendar } from "lucide-react";
+import { formatDate, formatTime, getDayOfWeek, isDateDisabled } from "@/utils/utils";
 
-// Типы данных
-interface TimeSlot {
-  id: string;
-  startTime: string;
-  endTime: string;
-  isAvailable: boolean;
-  bookingId?: string;
-  clientName?: string;
-}
-
-interface Booking {
-  id: number;
-  master_id: string;
-  service_id: number;
-  client_name: string;
-  client_phone: string;
-  client_telegram: string;
-  booking_date: string; // ISO string
-  start_time: string; // ISO string
-  end_time: string; // ISO string
-  status: string;
-  notes: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Service {
-  id: number;
-  master_id: string;
-  name: string;
-  description: string;
-  duration: number; // в минутах
-  price: string;
-  is_active: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface WorkingHour {
-  id: number;
-  master_id: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Master {
-  id: string;
-  name: string;
-  services: Service[];
-  workingHours: WorkingHour[];
-}
-
-// Утилиты для работы с датами
-const formatDate = (date: Date): string => {
-  return date.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
-
-const formatTime = (time: string): string => {
-  return time.slice(0, 5);
-};
-
-const getDayOfWeek = (date: Date): number => {
-  return date.getDay();
-};
-
-const isDateDisabled = (date: Date): boolean => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date < today;
-};
-
-// Генерация временных слотов на основе рабочих часов мастера и продолжительности услуги
+//Generate time slots
 const generateTimeSlots = (
   date: Date,
   master: Master,
@@ -134,13 +56,12 @@ const generateTimeSlots = (
   for (let slotStart = workStart; slotStart + duration <= workEnd; slotStart += duration) {
     const slotEnd = slotStart + duration;
     
-    // Форматируем время для отображения
+    // Форматируем время
     const startTimeStr = `${String(Math.floor(slotStart / 60)).padStart(2, "0")}:${String(slotStart % 60).padStart(2, "0")}`;
     const endTimeStr = `${String(Math.floor(slotEnd / 60)).padStart(2, "0")}:${String(slotEnd % 60).padStart(2, "0")}`;
 
-    // Проверка на бронирование для конкретной даты
+    // Проверка на бронирование
     const conflictBooking = dayBookings.find(booking => {
-      // Извлекаем время из ISO строк, используя UTC
       const bookingStart = new Date(booking.start_time);
       const bookingEnd = new Date(booking.end_time);
       
@@ -173,8 +94,7 @@ const generateTimeSlots = (
   return slots;
 };
 
-
-
+//FF
 const BookingCalendar: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -192,24 +112,21 @@ const BookingCalendar: React.FC = () => {
       try {
         setLoading(true);
         
-        // Загружаем данные мастера
+        const masterId = "cmdyrqen70000vfi04mimiq5v";
         const masterRes = await fetch(
-          "http://localhost:5000/masters/cmdyrqen70000vfi04mimiq5v/services/working"
+          `http://localhost:5000/masters/${masterId}/services/working`
         );
         if (!masterRes.ok) throw new Error("Failed to fetch master data");
         const masterData: Master = await masterRes.json();
         
-        // Загружаем бронирования
         const bookingsRes = await fetch(
-          "http://localhost:5000/bookings/master/cmdyrqen70000vfi04mimiq5v"
+          `http://localhost:5000/bookings/master/${masterId}`
         );
         if (!bookingsRes.ok) throw new Error("Failed to fetch bookings");
         const bookingsData: Booking[] = await bookingsRes.json();
         
         setMaster(masterData);
         setBookings(bookingsData);
-        console.log('Master data:', masterData);
-        console.log('Bookings data:', bookingsData);
         
         // Устанавливаем первую активную услугу по умолчанию
         const firstActiveService = masterData.services.find(service => service.is_active);
