@@ -12,11 +12,19 @@ interface TimeSlot {
 }
 
 interface Booking {
-  id: string;
-  date: string; // формат YYYY-MM-DD
-  startTime: string;
-  endTime: string;
-  clientName: string;
+  id: number;
+  master_id: string;
+  service_id: number;
+  client_name: string;
+  client_phone: string;
+  client_telegram: string;
+  booking_date: string; // ISO string
+  start_time: string; // ISO string
+  end_time: string; // ISO string
+  status: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Service {
@@ -86,103 +94,86 @@ const generateTimeSlots = (
   
   if (!workingHour) return [];
 
-  // Парсим ISO‑дату в часы и минуты
-  const parseTime = (isoString: string) => {
+  // Парсим время из ISO строк, игнорируя дату (берем только время)
+  const parseTimeFromISO = (isoString: string) => {
     const d = new Date(isoString);
-    return { h: d.getHours(), m: d.getMinutes() };
+    return { h: d.getUTCHours(), m: d.getUTCMinutes() }; // Используем UTC для избежания проблем с временными зонами
   };
 
-  const { h: startHour, m: startMinute } = parseTime(workingHour.start_time);
-  const { h: endHour, m: endMinute } = parseTime(workingHour.end_time);
+  const { h: startHour, m: startMinute } = parseTimeFromISO(workingHour.start_time);
+  const { h: endHour, m: endMinute } = parseTimeFromISO(workingHour.end_time);
 
-  const startTime = startHour * 60 + startMinute; // в минутах
-  const endTime = endHour * 60 + endMinute;
+  const workStart = startHour * 60 + startMinute; // в минутах от начала дня
+  const workEnd = endHour * 60 + endMinute;
   const duration = selectedService.duration;
 
   const slots: TimeSlot[] = [];
-  const slotInterval = 30; // шаг генерации
 
-  // Форматируем дату для сравнения с бронированиями
-  const selectedDateString = date.toISOString().split("T")[0]; // YYYY-MM-DD
+  // Форматируем дату для сравнения с бронированиями (только дата без времени)
+  const selectedDateString = date.getFullYear() + '-' + 
+    String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+    String(date.getDate()).padStart(2, '0');
   
-  // Фильтруем бронирования только для выбранной даты
-  const dayBookings = existingBookings.filter(booking => booking.date === selectedDateString);
+  // Фильтруем активные бронирования только для выбранной даты
+  const dayBookings = existingBookings.filter(booking => {
+    // Извлекаем дату из booking_date без учета времени
+    const bookingDateObj = new Date(booking.booking_date);
+    const bookingDateString = bookingDateObj.getFullYear() + '-' + 
+      String(bookingDateObj.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(bookingDateObj.getDate()).padStart(2, '0');
+    
+    return bookingDateString === selectedDateString && booking.status === 'active';
+  });
 
-  for (let time = startTime; time + duration <= endTime; time += slotInterval) {
-    const slotStart = `${String(Math.floor(time / 60)).padStart(2, "0")}:${String(
-      time % 60
-    ).padStart(2, "0")}`;
-    const slotEnd = `${String(Math.floor((time + duration) / 60)).padStart(
-      2,
-      "0"
-    )}:${String((time + duration) % 60).padStart(2, "0")}`;
+  console.log('Selected date:', selectedDateString);
+  console.log('Working hours:', workStart, 'to', workEnd, 'minutes');
+  console.log('Service duration:', duration, 'minutes');
+  console.log('Day bookings:', dayBookings);
+
+  // Генерируем слоты БЕЗ пересечений - каждый следующий начинается после окончания предыдущего
+  for (let slotStart = workStart; slotStart + duration <= workEnd; slotStart += duration) {
+    const slotEnd = slotStart + duration;
+    
+    // Форматируем время для отображения
+    const startTimeStr = `${String(Math.floor(slotStart / 60)).padStart(2, "0")}:${String(slotStart % 60).padStart(2, "0")}`;
+    const endTimeStr = `${String(Math.floor(slotEnd / 60)).padStart(2, "0")}:${String(slotEnd % 60).padStart(2, "0")}`;
 
     // Проверка на бронирование для конкретной даты
     const conflictBooking = dayBookings.find(booking => {
-      const bookingStartMinutes = parseTimeToMinutes(booking.startTime);
-      const bookingEndMinutes = parseTimeToMinutes(booking.endTime);
-      const slotStartMinutes = time;
-      const slotEndMinutes = time + duration;
+      // Извлекаем время из ISO строк, используя UTC
+      const bookingStart = new Date(booking.start_time);
+      const bookingEnd = new Date(booking.end_time);
+      
+      const bookingStartMinutes = bookingStart.getUTCHours() * 60 + bookingStart.getUTCMinutes();
+      const bookingEndMinutes = bookingEnd.getUTCHours() * 60 + bookingEnd.getUTCMinutes();
+      
+      console.log(`Checking slot ${startTimeStr}-${endTimeStr} (${slotStart}-${slotEnd}) vs booking ${bookingStartMinutes}-${bookingEndMinutes}`);
       
       // Проверяем пересечение временных интервалов
-      return (slotStartMinutes < bookingEndMinutes && slotEndMinutes > bookingStartMinutes);
+      return (slotStart < bookingEndMinutes && slotEnd > bookingStartMinutes);
     });
 
     // Проверка на прошлое время
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
     const currentTime = now.getHours() * 60 + now.getMinutes();
-    const isPast = isToday && time <= currentTime;
+    const isPast = isToday && slotStart <= currentTime;
 
     slots.push({
-      id: `${selectedDateString}-${slotStart}`,
-      startTime: slotStart,
-      endTime: slotEnd,
+      id: `${selectedDateString}-${startTimeStr}`,
+      startTime: startTimeStr,
+      endTime: endTimeStr,
       isAvailable: !conflictBooking && !isPast,
-      bookingId: conflictBooking?.id,
-      clientName: conflictBooking?.clientName,
+      bookingId: conflictBooking?.id.toString(),
+      clientName: conflictBooking?.client_name,
     });
   }
 
+  console.log('Generated slots:', slots);
   return slots;
 };
 
-// Вспомогательная функция для преобразования времени в минуты
-const parseTimeToMinutes = (timeString: string): number => {
-  const [hours, minutes] = timeString.split(':').map(Number);
-  return hours * 60 + minutes;
-};
 
-const mockBookings: Booking[] = [
-  {
-    id: "b1",
-    date: "2025-08-05", // Сегодня
-    startTime: "10:00",
-    endTime: "11:00",
-    clientName: "Мария И.",
-  },
-  {
-    id: "b2",
-    date: "2025-08-05", // Сегодня
-    startTime: "14:00",
-    endTime: "16:00",
-    clientName: "Елена С.",
-  },
-  {
-    id: "b3",
-    date: "2025-08-06", // Завтра
-    startTime: "16:30",
-    endTime: "17:30",
-    clientName: "Ольга К.",
-  },
-  {
-    id: "b4",
-    date: "2025-08-07", // Послезавтра
-    startTime: "11:00",
-    endTime: "13:00",
-    clientName: "Анна М.",
-  },
-];
 
 const BookingCalendar: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -190,27 +181,38 @@ const BookingCalendar: React.FC = () => {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
-  const [bookings] = useState<Booking[]>(mockBookings); // В реальном приложении загружайте из API
+  const [bookings, setBookings] = useState<Booking[]>([]);
   
   const [master, setMaster] = useState<Master | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchMaster = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(
+        setLoading(true);
+        
+        // Загружаем данные мастера
+        const masterRes = await fetch(
           "http://localhost:5000/masters/cmdyrqen70000vfi04mimiq5v/services/working"
         );
-
-        if (!res.ok) throw new Error("Failed to fetch master data");
-
-        const data: Master = await res.json();
-        setMaster(data);
-        console.log('Master data:', data);
+        if (!masterRes.ok) throw new Error("Failed to fetch master data");
+        const masterData: Master = await masterRes.json();
+        
+        // Загружаем бронирования
+        const bookingsRes = await fetch(
+          "http://localhost:5000/bookings/master/cmdyrqen70000vfi04mimiq5v"
+        );
+        if (!bookingsRes.ok) throw new Error("Failed to fetch bookings");
+        const bookingsData: Booking[] = await bookingsRes.json();
+        
+        setMaster(masterData);
+        setBookings(bookingsData);
+        console.log('Master data:', masterData);
+        console.log('Bookings data:', bookingsData);
         
         // Устанавливаем первую активную услугу по умолчанию
-        const firstActiveService = data.services.find(service => service.is_active);
+        const firstActiveService = masterData.services.find(service => service.is_active);
         if (firstActiveService) {
           setSelectedService(firstActiveService);
         }
@@ -221,7 +223,7 @@ const BookingCalendar: React.FC = () => {
       }
     };
 
-    fetchMaster();
+    fetchData();
   }, []);
 
   // Обновляем временные слоты при изменении даты или услуги
@@ -446,7 +448,7 @@ const BookingCalendar: React.FC = () => {
                     ${
                       slot.isAvailable
                         ? "hover:border-blue-300 cursor-pointer"
-                        : "bg-red-400 text-gray-800 cursor-not-allowed"
+                        : "bg-gray-100 text-gray-500 cursor-not-allowed"
                     }
                   `}>
                   <div className="flex justify-between items-center">
@@ -458,7 +460,7 @@ const BookingCalendar: React.FC = () => {
                       </span>
                     </div>
                     {!slot.isAvailable && slot.clientName && (
-                      <span className="text-xs text-gray-900">
+                      <span className="text-xs text-gray-500">
                         Занято: {slot.clientName}
                       </span>
                     )}
