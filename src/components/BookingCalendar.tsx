@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, User, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { ChevronLeft, ChevronRight, Clock, User, Calendar } from "lucide-react";
 
 // Типы данных
 interface TimeSlot {
@@ -11,28 +11,50 @@ interface TimeSlot {
   clientName?: string;
 }
 
-interface Service {
+interface Booking {
   id: string;
+  date: string; // формат YYYY-MM-DD
+  startTime: string;
+  endTime: string;
+  clientName: string;
+}
+
+interface Service {
+  id: number;
+  master_id: string;
   name: string;
+  description: string;
   duration: number; // в минутах
-  price: number;
+  price: string;
+  is_active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WorkingHour {
+  id: number;
+  master_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Master {
   id: string;
   name: string;
   services: Service[];
-  workingHours: {
-    [key: number]: { start: string; end: string }; // 0-6 дни недели
-  };
+  workingHours: WorkingHour[];
 }
 
 // Утилиты для работы с датами
 const formatDate = (date: Date): string => {
-  return date.toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
+  return date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 };
 
@@ -55,113 +77,186 @@ const generateTimeSlots = (
   date: Date,
   master: Master,
   selectedService: Service,
-  existingBookings: TimeSlot[] = []
+  existingBookings: Booking[] = []
 ): TimeSlot[] => {
   const dayOfWeek = getDayOfWeek(date);
-  const workingHours = master.workingHours[dayOfWeek];
   
-  if (!workingHours) return [];
+  // Находим рабочие часы для выбранного дня
+  const workingHour = master.workingHours.find(wh => wh.day_of_week === dayOfWeek && wh.is_active);
+  
+  if (!workingHour) return [];
 
-  const slots: TimeSlot[] = [];
-  const [startHour, startMinute] = workingHours.start.split(':').map(Number);
-  const [endHour, endMinute] = workingHours.end.split(':').map(Number);
-  
+  // Парсим ISO‑дату в часы и минуты
+  const parseTime = (isoString: string) => {
+    const d = new Date(isoString);
+    return { h: d.getHours(), m: d.getMinutes() };
+  };
+
+  const { h: startHour, m: startMinute } = parseTime(workingHour.start_time);
+  const { h: endHour, m: endMinute } = parseTime(workingHour.end_time);
+
   const startTime = startHour * 60 + startMinute; // в минутах
   const endTime = endHour * 60 + endMinute;
   const duration = selectedService.duration;
+
+  const slots: TimeSlot[] = [];
+  const slotInterval = 30; // шаг генерации
+
+  // Форматируем дату для сравнения с бронированиями
+  const selectedDateString = date.toISOString().split("T")[0]; // YYYY-MM-DD
   
-  // Генерируем слоты каждые 30 минут (можно настроить)
-  const slotInterval = 30;
-  
+  // Фильтруем бронирования только для выбранной даты
+  const dayBookings = existingBookings.filter(booking => booking.date === selectedDateString);
+
   for (let time = startTime; time + duration <= endTime; time += slotInterval) {
-    const slotStart = `${Math.floor(time / 60).toString().padStart(2, '0')}:${(time % 60).toString().padStart(2, '0')}`;
-    const slotEnd = `${Math.floor((time + duration) / 60).toString().padStart(2, '0')}:${((time + duration) % 60).toString().padStart(2, '0')}`;
-    
-    // Проверяем, не занят ли слот
-    const isBooked = existingBookings.some(booking => 
-      booking.startTime <= slotStart && booking.endTime > slotStart
-    );
-    
-    // Проверяем, не в прошлом ли время (для сегодняшней даты)
+    const slotStart = `${String(Math.floor(time / 60)).padStart(2, "0")}:${String(
+      time % 60
+    ).padStart(2, "0")}`;
+    const slotEnd = `${String(Math.floor((time + duration) / 60)).padStart(
+      2,
+      "0"
+    )}:${String((time + duration) % 60).padStart(2, "0")}`;
+
+    // Проверка на бронирование для конкретной даты
+    const conflictBooking = dayBookings.find(booking => {
+      const bookingStartMinutes = parseTimeToMinutes(booking.startTime);
+      const bookingEndMinutes = parseTimeToMinutes(booking.endTime);
+      const slotStartMinutes = time;
+      const slotEndMinutes = time + duration;
+      
+      // Проверяем пересечение временных интервалов
+      return (slotStartMinutes < bookingEndMinutes && slotEndMinutes > bookingStartMinutes);
+    });
+
+    // Проверка на прошлое время
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
     const currentTime = now.getHours() * 60 + now.getMinutes();
     const isPast = isToday && time <= currentTime;
-    
+
     slots.push({
-      id: `${date.toISOString().split('T')[0]}-${slotStart}`,
+      id: `${selectedDateString}-${slotStart}`,
       startTime: slotStart,
       endTime: slotEnd,
-      isAvailable: !isBooked && !isPast,
-      bookingId: isBooked ? existingBookings.find(b => b.startTime <= slotStart && b.endTime > slotStart)?.bookingId : undefined,
-      clientName: isBooked ? existingBookings.find(b => b.startTime <= slotStart && b.endTime > slotStart)?.clientName : undefined
+      isAvailable: !conflictBooking && !isPast,
+      bookingId: conflictBooking?.id,
+      clientName: conflictBooking?.clientName,
     });
   }
-  
+
   return slots;
 };
 
-// Мокданные
-const mockMaster: Master = {
-  id: '1',
-  name: 'Анна Козлова',
-  services: [
-    { id: '1', name: 'Стрижка', duration: 60, price: 1500 },
-    { id: '2', name: 'Окрашивание', duration: 120, price: 3000 },
-    { id: '3', name: 'Укладка', duration: 45, price: 1000 },
-    { id: '4', name: 'Маникюр', duration: 90, price: 2000 }
-  ],
-  workingHours: {
-    1: { start: '09:00', end: '18:00' }, // Понедельник
-    2: { start: '09:00', end: '18:00' }, // Вторник
-    3: { start: '09:00', end: '18:00' }, // Среда
-    4: { start: '09:00', end: '18:00' }, // Четверг
-    5: { start: '09:00', end: '17:00' }, // Пятница
-    6: { start: '10:00', end: '16:00' }, // Суббота
-    0: { start: '11:00', end: '15:00' }  // Воскресенье
-  }
+// Вспомогательная функция для преобразования времени в минуты
+const parseTimeToMinutes = (timeString: string): number => {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return hours * 60 + minutes;
 };
 
-const mockBookings: TimeSlot[] = [
-  { id: '1', startTime: '10:00', endTime: '11:00', isAvailable: false, bookingId: 'b1', clientName: 'Мария И.' },
-  { id: '2', startTime: '14:00', endTime: '16:00', isAvailable: false, bookingId: 'b2', clientName: 'Елена С.' },
-  { id: '3', startTime: '16:30', endTime: '17:30', isAvailable: false, bookingId: 'b3', clientName: 'Ольга К.' }
+const mockBookings: Booking[] = [
+  {
+    id: "b1",
+    date: "2025-08-05", // Сегодня
+    startTime: "10:00",
+    endTime: "11:00",
+    clientName: "Мария И.",
+  },
+  {
+    id: "b2",
+    date: "2025-08-05", // Сегодня
+    startTime: "14:00",
+    endTime: "16:00",
+    clientName: "Елена С.",
+  },
+  {
+    id: "b3",
+    date: "2025-08-06", // Завтра
+    startTime: "16:30",
+    endTime: "17:30",
+    clientName: "Ольга К.",
+  },
+  {
+    id: "b4",
+    date: "2025-08-07", // Послезавтра
+    startTime: "11:00",
+    endTime: "13:00",
+    clientName: "Анна М.",
+  },
 ];
 
 const BookingCalendar: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedService, setSelectedService] = useState<Service>(mockMaster.services[0]);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [bookings] = useState<Booking[]>(mockBookings); // В реальном приложении загружайте из API
+  
+  const [master, setMaster] = useState<Master | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchMaster = async () => {
+      try {
+        const res = await fetch(
+          "http://localhost:5000/masters/cmdyrqen70000vfi04mimiq5v/services/working"
+        );
+
+        if (!res.ok) throw new Error("Failed to fetch master data");
+
+        const data: Master = await res.json();
+        setMaster(data);
+        console.log('Master data:', data);
+        
+        // Устанавливаем первую активную услугу по умолчанию
+        const firstActiveService = data.services.find(service => service.is_active);
+        if (firstActiveService) {
+          setSelectedService(firstActiveService);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMaster();
+  }, []);
 
   // Обновляем временные слоты при изменении даты или услуги
   useEffect(() => {
-    const slots = generateTimeSlots(selectedDate, mockMaster, selectedService, mockBookings);
-    setTimeSlots(slots);
-    setSelectedTimeSlot(null);
-  }, [selectedDate, selectedService]);
+    if (master && selectedService) {
+      const slots = generateTimeSlots(
+        selectedDate,
+        master,
+        selectedService,
+        bookings
+      );
+      setTimeSlots(slots);
+      setSelectedTimeSlot(null);
+    }
+  }, [selectedDate, selectedService, master, bookings]);
 
   // Генерация дней для календаря
   const generateCalendarDays = (month: Date): Date[] => {
     const year = month.getFullYear();
     const monthIndex = month.getMonth();
-    
+
     const firstDay = new Date(year, monthIndex, 1);
-    // const lastDay = new Date(year, monthIndex + 1, 0);
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay());
-    
+
     const days: Date[] = [];
     const current = new Date(startDate);
-    
+
     for (let week = 0; week < 6; week++) {
       for (let day = 0; day < 7; day++) {
         days.push(new Date(current));
         current.setDate(current.getDate() + 1);
       }
     }
-    
+
     return days;
   };
 
@@ -180,29 +275,42 @@ const BookingCalendar: React.FC = () => {
   };
 
   const handlePrevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1)
+    );
   };
 
   const handleNextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1)
+    );
   };
 
   const handleBooking = () => {
-    if (selectedTimeSlot) {
-      alert(`Запись на ${formatDate(selectedDate)} в ${selectedTimeSlot.startTime} на услугу "${selectedService.name}" оформлена!`);
+    if (selectedTimeSlot && selectedService) {
+      alert(
+        `Запись на ${formatDate(selectedDate)} в ${
+          selectedTimeSlot.startTime
+        } на услугу "${selectedService.name}" оформлена!`
+      );
     }
   };
 
+  if (loading) return <div className="flex justify-center items-center min-h-screen"><p>Загрузка...</p></div>;
+  if (error) return <div className="flex justify-center items-center min-h-screen"><p>Ошибка: {error}</p></div>;
+  if (!master) return <div className="flex justify-center items-center min-h-screen"><p>Мастер не найден</p></div>;
 
   return (
     <div className="max-w-4xl mx-auto p-4 min-h-screen text-gray-500">
       {/* Заголовок */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Запись к мастеру</h1>
-        
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+          Запись к мастеру
+        </h1>
+
         <div className="flex items-center text-gray-600">
           <User className="w-4 h-4 mr-2" />
-          <span>{mockMaster.name}</span>
+          <span>{master.name}</span>
         </div>
       </div>
 
@@ -210,20 +318,22 @@ const BookingCalendar: React.FC = () => {
       <div className="mb-6">
         <h3 className="text-lg font-semibold mb-3">Выберите услугу</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {mockMaster.services.map((service) => (
+          {master.services.filter(service => service.is_active).map((service) => (
             <button
               key={service.id}
               onClick={() => setSelectedService(service)}
               className={`p-3 rounded-lg border-2 text-left transition-colors ${
-                selectedService.id === service.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
+                selectedService?.id === service.id
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}>
               <div className="font-medium">{service.name}</div>
               <div className="text-sm text-gray-600">
                 {service.duration} мин • {service.price} ₽
               </div>
+              {service.description && (
+                <div className="text-xs text-gray-500 mt-1">{service.description}</div>
+              )}
             </button>
           ))}
         </div>
@@ -233,21 +343,30 @@ const BookingCalendar: React.FC = () => {
         {/* Календарь */}
         <div className="bg-gray-50 rounded-lg p-4">
           <div className="flex items-center justify-between mb-4">
-            <button onClick={handlePrevMonth} className="p-2 hover:bg-gray-200 rounded">
+            <button
+              onClick={handlePrevMonth}
+              className="p-2 hover:bg-gray-200 rounded">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <h3 className="text-lg font-semibold">
-              {currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+              {currentMonth.toLocaleDateString("ru-RU", {
+                month: "long",
+                year: "numeric",
+              })}
             </h3>
-            <button onClick={handleNextMonth} className="p-2 hover:bg-gray-200 rounded">
+            <button
+              onClick={handleNextMonth}
+              className="p-2 hover:bg-gray-200 rounded">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
 
           {/* Дни недели */}
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'].map((day) => (
-              <div key={day} className="text-center text-sm font-medium text-gray-600 py-2">
+            {["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"].map((day) => (
+              <div
+                key={day}
+                className="text-center text-sm font-medium text-gray-600 py-2">
                 {day}
               </div>
             ))}
@@ -256,8 +375,10 @@ const BookingCalendar: React.FC = () => {
           {/* Календарная сетка */}
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((date, index) => {
-              const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
-              const isSelected = date.toDateString() === selectedDate.toDateString();
+              const isCurrentMonth =
+                date.getMonth() === currentMonth.getMonth();
+              const isSelected =
+                date.toDateString() === selectedDate.toDateString();
               const isDisabled = isDateDisabled(date);
               const isToday = date.toDateString() === new Date().toDateString();
 
@@ -268,13 +389,20 @@ const BookingCalendar: React.FC = () => {
                   disabled={isDisabled}
                   className={`
                     p-2 text-sm rounded transition-colors
-                    ${!isCurrentMonth ? 'text-gray-300' : ''}
-                    ${isSelected ? 'bg-blue-500 text-white' : ''}
-                    ${isToday && !isSelected ? 'bg-blue-100 text-blue-600' : ''}
-                    ${isDisabled ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200'}
-                    ${!isDisabled && !isSelected && !isToday ? 'hover:bg-gray-200' : ''}
-                  `}
-                >
+                    ${!isCurrentMonth ? "text-gray-300" : ""}
+                    ${isSelected ? "bg-blue-500 text-white" : ""}
+                    ${isToday && !isSelected ? "bg-blue-100 text-blue-600" : ""}
+                    ${
+                      isDisabled
+                        ? "text-gray-300 cursor-not-allowed"
+                        : "hover:bg-gray-200"
+                    }
+                    ${
+                      !isDisabled && !isSelected && !isToday
+                        ? "hover:bg-gray-200"
+                        : ""
+                    }
+                  `}>
                   {date.getDate()}
                 </button>
               );
@@ -291,7 +419,12 @@ const BookingCalendar: React.FC = () => {
             </h3>
           </div>
 
-          {timeSlots.length === 0 ? (
+          {!selectedService ? (
+            <div className="text-center text-gray-500 py-8">
+              <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>Сначала выберите услугу</p>
+            </div>
+          ) : timeSlots.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
               <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
               <p>В этот день мастер не работает</p>
@@ -305,25 +438,27 @@ const BookingCalendar: React.FC = () => {
                   disabled={!slot.isAvailable}
                   className={`
                     w-full p-3 rounded-lg text-left transition-colors border
-                    ${selectedTimeSlot?.id === slot.id 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200'
+                    ${
+                      selectedTimeSlot?.id === slot.id
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200"
                     }
-                    ${slot.isAvailable 
-                      ? 'hover:border-blue-300 cursor-pointer' 
-                      : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                    ${
+                      slot.isAvailable
+                        ? "hover:border-blue-300 cursor-pointer"
+                        : "bg-red-400 text-gray-800 cursor-not-allowed"
                     }
-                  `}
-                >
+                  `}>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center">
                       <Clock className="w-4 h-4 mr-2" />
                       <span className="font-medium">
-                        {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                        {formatTime(slot.startTime)} -{" "}
+                        {formatTime(slot.endTime)}
                       </span>
                     </div>
                     {!slot.isAvailable && slot.clientName && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-900">
                         Занято: {slot.clientName}
                       </span>
                     )}
@@ -341,13 +476,15 @@ const BookingCalendar: React.FC = () => {
       </div>
 
       {/* Кнопка записи */}
-      {selectedTimeSlot && (
+      {selectedTimeSlot && selectedService && (
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <div className="flex justify-between items-center mb-4">
             <div>
               <h4 className="font-semibold">Детали записи:</h4>
               <p className="text-sm text-gray-600">
-                {selectedService.name} • {formatDate(selectedDate)} • {formatTime(selectedTimeSlot.startTime)} - {formatTime(selectedTimeSlot.endTime)}
+                {selectedService.name} • {formatDate(selectedDate)} •{" "}
+                {formatTime(selectedTimeSlot.startTime)} -{" "}
+                {formatTime(selectedTimeSlot.endTime)}
               </p>
               <p className="text-sm text-gray-600">
                 Стоимость: {selectedService.price} ₽
@@ -356,8 +493,7 @@ const BookingCalendar: React.FC = () => {
           </div>
           <button
             onClick={handleBooking}
-            className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 transition-colors"
-          >
+            className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 transition-colors">
             Записаться на сеанс
           </button>
         </div>
